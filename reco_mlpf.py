@@ -181,6 +181,45 @@ process = miniAOD_customizeAllData(process)
 from FWCore.Modules.logErrorHarvester_cff import customiseLogErrorHarvesterUsingOutputCommands
 process = customiseLogErrorHarvesterUsingOutputCommands(process)
 
+process.collectionSizes = cms.EDProducer("CollectionSizeProducer")
+process.collectionSizesTable = cms.EDProducer("GlobalVariablesTableProducer",
+    variables = cms.PSet(
+        nGeneralTracks = cms.PSet(
+            type = cms.string("int"),
+            src = cms.InputTag("collectionSizes", "nGeneralTracks"),
+            doc = cms.string("Total number of generalTracks")
+        ),
+        nSiPixelClusters = cms.PSet(
+            type = cms.string("int"),
+            src = cms.InputTag("collectionSizes", "nSiPixelClusters"),
+            doc = cms.string("Total number of siPixelClusters")
+        ),
+        nSiStripClusters = cms.PSet(
+            type = cms.string("int"),
+            src = cms.InputTag("collectionSizes", "nSiStripClusters"),
+            doc = cms.string("Total number of siStripClusters")
+        ),
+        nHighPurityTracks = cms.PSet(
+            type = cms.string("int"),
+            src = cms.InputTag("collectionSizes", "nHighPurityTracks"),
+            doc = cms.string("Total number of High Purity Tracks")
+        ),
+        nInitialStepTracks = cms.PSet(
+            type = cms.string("int"),
+            src = cms.InputTag("collectionSizes", "nInitialStepTracks"),
+            doc = cms.string("Total number of Initial Step Tracks")
+        ),
+        nLateStepTracks = cms.PSet(
+            type = cms.string("int"),
+            src = cms.InputTag("collectionSizes", "nLateStepTracks"),
+            doc = cms.string("Total number of Late Step Tracks")
+        )
+    )
+)
+process.size_step = cms.Path(process.collectionSizes + process.collectionSizesTable)
+nano_idx = process.schedule.index(process.nanoAOD_step)
+process.schedule.insert(nano_idx, process.size_step)
+
 # Add early deletion of temporary data products to reduce peak memory need
 from Configuration.StandardSequences.earlyDeleteSettings_cff import customiseEarlyDelete
 process = customiseEarlyDelete(process)

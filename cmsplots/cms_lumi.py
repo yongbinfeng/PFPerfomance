@@ -45,8 +45,8 @@ def CMS_lumi(pad,  iPeriod,  iPosX ):
     if( iPosX/10==3 ): alignX_=3
     align_ = 10*alignX_ + alignY_
 
-    H = pad.GetWh()
-    W = pad.GetWw()
+    H = pad.GetAbsHNDC() * pad.GetWh()   # correct for sub-pads
+    W = pad.GetAbsWNDC() * pad.GetWw()
     l = pad.GetLeftMargin()
     t = pad.GetTopMargin()
     r = pad.GetRightMargin()
@@ -148,12 +148,15 @@ def CMS_lumi(pad,  iPeriod,  iPosX ):
                 latex.DrawLatex(posX_, posY_- relExtraDY*cmsTextSize*t, extraText)
     elif( writeExtraText ):
         if( iPosX==0):
-            posX_ =   l +  relPosX*(1-l-r)
-            posY_ =   1-t+lumiTextOffset*t
+            # Geometry-based width of "CMS" so extra text starts just after it.
+            # Char width/height ratio ≈ 0.5 for Helvetica Bold, scaled by H/W.
+            cms_w = len(cmsText) * 0.5 * (cmsTextSize * t) * (H / W)
+            posX_ = l + cms_w + 0.035
+            posY_ = 1 - t + lumiTextOffset * t
 
         latex.SetTextFont(extraTextFont)
         latex.SetTextSize(extraTextSize*t)
         latex.SetTextAlign(align_)
-        latex.DrawLatex(posX_, posY_, extraText)      
-
-    pad.Update()
+        latex.DrawLatex(posX_, posY_, extraText)
+    # pad.Update() intentionally removed: calling Update() here re-renders the
+    # COLZ palette on top of the label in PDF output.

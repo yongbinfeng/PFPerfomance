@@ -7,11 +7,12 @@ Compares Particle Flow (PF) and ML-based Particle Flow (MLPF) reconstruction on 
 Set up the CMSSW environment and apply the MLPF development branch:
 
 ```bash
+export SCRAM_ARCH=el9_amd64_gcc13
 cmsrel CMSSW_16_1_0_pre3
 cd CMSSW_16_1_0_pre3/src
 cmsenv
 git cms-init
-git cms-merge-topic -u yongbinfeng:jp_mlpf_20260302_dev
+git cms-merge-topic -u yongbinfeng:jp_mlpf_20260302_dev_dump_tracking
 scram b -j8
 ```
 
@@ -32,18 +33,54 @@ Run numbers: `397954`, `397962`, `398902`, `398903`
 After running reconstruction, the output NanoAOD ROOT files are expected to be named:
 
 - `nano_pf.root` — standard PF reconstruction
-- `nano_mlpf.root` — MLPF reconstruction
+- `nano_mlpf_2.root` — MLPF reconstruction
 
-## Comparison Script
+## Scripts
 
-`compare.py` compares AK4/AK8 jet kinematics and PF candidate distributions using PyROOT + RDataFrame, saving one PDF per variable to `plots/`.
+### `compare.py` — PF vs MLPF comparison
 
-**Run with defaults** (uses `nano_pf.root` and `nano_mlpf.root`):
+Compares AK4/AK8 jet kinematics, PF candidate distributions (inclusive and per particle type), and 2D eta×phi profiles using PyROOT + RDataFrame. Saves one PDF per variable to `plots/`.
+
+Plot categories produced:
+- AK4 jet kinematics (pT, eta, phi, mass, multiplicity)
+- AK8 jet kinematics (pT, eta, phi, soft-drop mass, multiplicity)
+- PF candidates: inclusive (pT, eta, phi, mass, PUPPI weight, dz, dxy, fromPV, particleId)
+- PF candidates: per particle type (charged hadron, neutral hadron, photon, HF EM, HF hadron)
+- PF candidates: pT × PUPPI weight per particle type
+- 2D profiles: mean pT and mean pT×PUPPI weight vs eta×phi per particle type
+- Global event variables (e.g. PV_npvsGood)
+
+**Run with defaults** (`nano_pf.root` vs `nano_mlpf_2.root`):
 ```bash
 python compare.py
 ```
 
 **Run with custom files and labels:**
 ```bash
-python compare.py file1.root file2.root --tree Events --labels "PF,MLPF"
+python compare.py file1.root file2.root --tree Events --labels "PF,MLPF" --outdir plots/
 ```
+
+### `make_plots.py` — Pileup / primary-vertex plots
+
+Produces pileup and PV diagnostic plots from NanoAOD files using CMS TDR style (`cmsplots/`). Supports both data and MC modes.
+
+Plots produced:
+- 1D distributions: `PV_npvsGood`, `PV_npvs`, `PV_z`, `PV_ndof`, jet multiplicities
+- MC-only: truth pileup (`Pileup_nPU`, `Pileup_nTrueInt`), `GenVtx_z`, Δz(PV − GenVtx)
+- 2D correlations: reco vs truth vertex counts, PV_z vs pileup, ndof vs pileup, etc.
+- Overlay canvas: normalized PV_npvsGood / npvs (/ nPU / nTrueInt for MC)
+- Overview grid and `histograms.root` saved to `plots/Data/` or `plots/MC/`
+
+**Run on data:**
+```bash
+python make_plots.py --data
+```
+
+**Run on MC (default):**
+```bash
+python make_plots.py
+```
+
+File patterns are hardcoded at the top of the script (`DATA_FILE_PATTERN`, `MC_FILE_PATTERN`) — edit them to point to your NanoAOD files.
+
+> **Dependency:** requires the `cmsplots/` submodule (provides `tdrstyle` and `cms_lumi`).

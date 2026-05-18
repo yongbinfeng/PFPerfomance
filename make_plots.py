@@ -88,50 +88,10 @@ def setup_style():
     ROOT.gStyle.SetPalette(ROOT.kViridis)
 
 
-def draw_cms(pad):
-    pad.cd()
-    t = pad.GetTopMargin()
-    l = pad.GetLeftMargin()
-    r = pad.GetRightMargin()
-    # Actual pixel dimensions of this pad (works for sub-pads too)
-    W = pad.GetAbsWNDC() * pad.GetWw()
-    H = pad.GetAbsHNDC() * pad.GetWh()
-    ypos = 1.0 - t + cms_lumi.lumiTextOffset * t
-
-    tex = ROOT.TLatex()
-    tex.SetNDC()
-    tex.SetTextAngle(0)
-    tex.SetTextColor(ROOT.kBlack)
-    tex.SetTextAlign(11)
-
-    cms_size = cms_lumi.cmsTextSize * t
-
-    # "CMS" in bold
-    tex.SetTextFont(cms_lumi.cmsTextFont)
-    tex.SetTextSize(cms_size)
-    tex.DrawLatex(l, ypos, cms_lumi.cmsText)
-
-    # Width of "CMS": Helvetica Bold char width/height ratio ≈ 0.5, scaled by H/W
-    cms_w = len(cms_lumi.cmsText) * 0.5 * cms_size * (H / W)
-
-    if cms_lumi.writeExtraText:
-        tex.SetTextFont(cms_lumi.extraTextFont)
-        tex.SetTextSize(cms_lumi.extraOverCmsTextSize * cms_size)
-        tex.DrawLatex(l + cms_w + 0.035, ypos, cms_lumi.extraText)
-
-    if cms_lumi.lumi_sqrtS:
-        tex.SetTextFont(42)
-        tex.SetTextSize(cms_lumi.lumiTextSize * t)
-        tex.SetTextAlign(31)
-        tex.DrawLatex(1.0 - r, ypos, cms_lumi.lumi_sqrtS)
-    # No pad.Update() here: for COLZ plots, Update() re-renders the palette
-    # axis on top of the text we just drew, erasing it in the PDF output.
-
-
 def save(canvas, name):
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    canvas.SaveAs(f"{OUTPUT_DIR}/{name}.png")
-    canvas.SaveAs(f"{OUTPUT_DIR}/{name}.pdf")
+    canvas.Print(f"{OUTPUT_DIR}/{name}.png")
+    canvas.Print(f"{OUTPUT_DIR}/{name}.pdf")
     print(f"  -> {OUTPUT_DIR}/{name}.{{png,pdf}}")
 
 
@@ -139,7 +99,7 @@ def draw2d(h, cname, fname, cw=900, ch=700):
     c = ROOT.TCanvas(cname, "", cw, ch)
     c.SetRightMargin(0.12)
     h.Draw("COLZ")
-    c.Update()      # flush histogram + palette before drawing the label
+    c.Update()           # materialise COLZ palette so ProfileX works
     # Profile (mean y per x bin) drawn on top
     th2 = h.GetValue()
     prof = th2.ProfileX(f"{th2.GetName()}_pfx")
@@ -149,7 +109,7 @@ def draw2d(h, cname, fname, cw=900, ch=700):
     prof.SetMarkerStyle(20)
     prof.SetMarkerSize(0.5)
     prof.Draw("SAME E")
-    draw_cms(c)
+    cms_lumi.CMS_lumi(c, 0, 0)   # after histogram; no pad.Update() inside anymore
     save(c, fname)
     return c
 
@@ -255,7 +215,7 @@ def main():
         c = ROOT.TCanvas(f"c_{key}", "", CW, CH)
         hptr.SetLineColor(lc)
         hptr.Draw("HIST")
-        draw_cms(c)
+        cms_lumi.CMS_lumi(c, 0, 0)
         save(c, branch_name)
         canvases.append(c)
 
@@ -295,7 +255,7 @@ def main():
         leg.AddEntry(h, VARS[key][0], "l")
 
     leg.Draw()
-    draw_cms(c_ov)
+    cms_lumi.CMS_lumi(c_ov, 0, 0)
     save(c_ov, "PV_npvs_and_Pileup_overlay")
     canvases.append(c_ov)
     canvases.extend(h_norms)
@@ -342,7 +302,7 @@ def main():
         lc, _ = COLORS[key]
         hptr.SetLineColor(lc)
         hptr.Draw("HIST")
-        draw_cms(pad)
+        cms_lumi.CMS_lumi(pad, 0, 0)
     save(c_grid, "pileup_overview")
     canvases.append(c_grid)
 
