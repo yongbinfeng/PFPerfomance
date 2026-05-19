@@ -5,16 +5,27 @@
 # with command line options: reco_to_nano_dump --filein file:0030b745-e184-4391-9515-e8d13847ad45.root --fileout file:nano_with_cands.root --step RAW2DIGI,L1Reco,RECO,PAT,NANO --datatier NANOAOD --eventcontent NANOAOD --conditions auto:run3_data_prompt --era Run3_2025 --customise PhysicsTools/NanoAOD/custom_btv_cff.addPFCands --nThreads 8 --no_exec -n 100
 import FWCore.ParameterSet.Config as cms
 
-doMLPF=True
+doMLPF=False
+isMC=True
+
+file_input_data = "file:/afs/cern.ch/work/y/yofeng/public/MLPF/raw_08357e72-91de-42c0-b359-30ab4d718a54.root"
+file_input_mc = "root://eoscms.cern.ch//eos/cms/store/mc/Run3Winter25Digi/QCD_Bin-PT-15to7000_Par-PT-flat2022_TuneCP5_13p6TeV_pythia8/GEN-SIM-RAW/FlatPU50to150_142X_mcRun3_2025_realistic_v9-v2/120000/003376e1-21ed-4d7b-9b75-257cf4b1ec45.root"
 
 from Configuration.Eras.Era_Run3_2025_cff import Run3_2025
 if doMLPF:
     from Configuration.ProcessModifiers.mlpf_cff import mlpf
     process = cms.Process('RECO',Run3_2025,mlpf)
-    outputname = "nano_mlpf_2.root"
+    outputname = "nano_mlpf.root"
 else:
     process = cms.Process('RECO',Run3_2025)
     outputname = "nano_pf.root"
+    
+if isMC:
+    outputname = outputname.replace(".root", "_mc.root")
+
+import FWCore.ParameterSet.VarParsing as VarParsing
+options = VarParsing.VarParsing('analysis')
+options.parseArguments()
 
 # import of standard configurations
 process.load('Configuration.StandardSequences.Services_cff')
@@ -23,24 +34,29 @@ process.load('FWCore.MessageService.MessageLogger_cfi')
 process.load('Configuration.EventContent.EventContent_cff')
 process.load('Configuration.StandardSequences.GeometryRecoDB_cff')
 process.load('Configuration.StandardSequences.MagneticField_cff')
-process.load('Configuration.StandardSequences.RawToDigi_Data_cff')
+if isMC:
+    process.load('Configuration.StandardSequences.RawToDigi_cff')
+else:
+    process.load('Configuration.StandardSequences.RawToDigi_Data_cff')
 process.load('Configuration.StandardSequences.L1Reco_cff')
-process.load('Configuration.StandardSequences.Reconstruction_Data_cff')
+if isMC:
+    process.load('Configuration.StandardSequences.Reconstruction_cff')
+else:
+    process.load('Configuration.StandardSequences.Reconstruction_Data_cff')
 process.load('Configuration.StandardSequences.PAT_cff')
 process.load('PhysicsTools.NanoAOD.nano_cff')
 process.load('Configuration.StandardSequences.EndOfProcess_cff')
 process.load('Configuration.StandardSequences.FrontierConditions_GlobalTag_cff')
 
 process.maxEvents = cms.untracked.PSet(
-    input = cms.untracked.int32(50),
+    input = cms.untracked.int32(20),
     output = cms.optional.untracked.allowed(cms.int32,cms.PSet)
 )
 
 # Input source
 process.source = cms.Source("PoolSource",
     fileNames = cms.untracked.vstring(
-        #'file:0030b745-e184-4391-9515-e8d13847ad45.root'
-        'file:/afs/cern.ch/work/y/yofeng/public/MLPF/raw_08357e72-91de-42c0-b359-30ab4d718a54.root'
+        file_input_data if not isMC else file_input_mc
     ),
     secondaryFileNames = cms.untracked.vstring()
 )
@@ -101,7 +117,8 @@ process.NANOAODoutput = cms.OutputModule("NanoAODOutputModule",
 
 # Other statements
 from Configuration.AlCa.GlobalTag import GlobalTag
-process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:run3_data_prompt', '')
+globaltag = 'auto:run3_data_prompt' if not isMC else '150X_mcRun3_2024_realistic_v2'
+process.GlobalTag = GlobalTag(process.GlobalTag, globaltag, '')
 
 # Path and EndPath definitions
 process.raw2digi_step = cms.Path(process.RawToDigi)
@@ -135,7 +152,7 @@ process.Flag_trkPOGFilters = cms.Path(process.trkPOGFilters)
 process.Flag_trkPOG_logErrorTooManyClusters = cms.Path(~process.logErrorTooManyClusters)
 process.Flag_trkPOG_manystripclus53X = cms.Path(~process.manystripclus53X)
 process.Flag_trkPOG_toomanystripclus53X = cms.Path(~process.toomanystripclus53X)
-process.nanoAOD_step = cms.Path(process.nanoSequence)
+process.nanoAOD_step = cms.Path(process.nanoSequenceMC if isMC else process.nanoSequence)
 process.endjob_step = cms.EndPath(process.endOfProcess)
 process.NANOAODoutput_step = cms.EndPath(process.NANOAODoutput)
 
@@ -147,7 +164,12 @@ associatePatAlgosToolsTask(process)
 
 #Setup FWK for multithreaded
 process.options.numberOfThreads = 8
-process.options.numberOfStreams = 0
+process.options.numberOfStreams = 0 if isMC else 0
+
+# At high PU the displaced regional step generates too many seeds; raise the limit to avoid
+# downstream tracking/vertex failures (default 500k is exceeded at ~150 PU)
+#if isMC:
+#    process.displacedRegionalStepTrackCandidates.maxNSeeds = cms.uint32(5000000)
 
 # customisation of the process.
 
@@ -168,10 +190,12 @@ process = nanoAOD_customizeCommon(process)
 # customisation of the process.
 
 # Automatic addition of the customisation function from Configuration.StandardSequences.PAT_cff
-from Configuration.StandardSequences.PAT_cff import miniAOD_customizeAllData 
-
-#call to customisation function miniAOD_customizeAllData imported from Configuration.StandardSequences.PAT_cff
-process = miniAOD_customizeAllData(process)
+if isMC:
+    from Configuration.StandardSequences.PAT_cff import miniAOD_customizeAllMC
+    process = miniAOD_customizeAllMC(process)
+else:
+    from Configuration.StandardSequences.PAT_cff import miniAOD_customizeAllData
+    process = miniAOD_customizeAllData(process)
 
 # End of customisation functions
 
@@ -181,44 +205,17 @@ process = miniAOD_customizeAllData(process)
 from FWCore.Modules.logErrorHarvester_cff import customiseLogErrorHarvesterUsingOutputCommands
 process = customiseLogErrorHarvesterUsingOutputCommands(process)
 
-process.collectionSizes = cms.EDProducer("CollectionSizeProducer")
-process.collectionSizesTable = cms.EDProducer("GlobalVariablesTableProducer",
-    variables = cms.PSet(
-        nGeneralTracks = cms.PSet(
-            type = cms.string("int"),
-            src = cms.InputTag("collectionSizes", "nGeneralTracks"),
-            doc = cms.string("Total number of generalTracks")
-        ),
-        nSiPixelClusters = cms.PSet(
-            type = cms.string("int"),
-            src = cms.InputTag("collectionSizes", "nSiPixelClusters"),
-            doc = cms.string("Total number of siPixelClusters")
-        ),
-        nSiStripClusters = cms.PSet(
-            type = cms.string("int"),
-            src = cms.InputTag("collectionSizes", "nSiStripClusters"),
-            doc = cms.string("Total number of siStripClusters")
-        ),
-        nHighPurityTracks = cms.PSet(
-            type = cms.string("int"),
-            src = cms.InputTag("collectionSizes", "nHighPurityTracks"),
-            doc = cms.string("Total number of High Purity Tracks")
-        ),
-        nInitialStepTracks = cms.PSet(
-            type = cms.string("int"),
-            src = cms.InputTag("collectionSizes", "nInitialStepTracks"),
-            doc = cms.string("Total number of Initial Step Tracks")
-        ),
-        nLateStepTracks = cms.PSet(
-            type = cms.string("int"),
-            src = cms.InputTag("collectionSizes", "nLateStepTracks"),
-            doc = cms.string("Total number of Late Step Tracks")
-        )
-    )
-)
-process.size_step = cms.Path(process.collectionSizes + process.collectionSizesTable)
-nano_idx = process.schedule.index(process.nanoAOD_step)
-process.schedule.insert(nano_idx, process.size_step)
+from PhysicsTools.NanoAOD.custom_highpu_cff import addCollectionSizes, addPackedGenParticlesTable
+process = addCollectionSizes(process)
+
+if isMC:
+    process = addPackedGenParticlesTable(process)
+
+process.MessageLogger.cerr.threshold = 'WARNING'
+process.MessageLogger.cerr.default.limit = -1
+process.MessageLogger.cerr.TooManyClusters = cms.untracked.PSet(limit = cms.untracked.int32(-1))
+process.MessageLogger.cerr.TooManyPairs = cms.untracked.PSet(limit = cms.untracked.int32(-1))
+process.MessageLogger.cerr.TooManyDoublets = cms.untracked.PSet(limit = cms.untracked.int32(-1))
 
 # Add early deletion of temporary data products to reduce peak memory need
 from Configuration.StandardSequences.earlyDeleteSettings_cff import customiseEarlyDelete
